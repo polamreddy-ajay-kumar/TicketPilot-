@@ -80,8 +80,8 @@ TicketPilot: I couldn't find order Z999. Could you please double-check the ID?
 
 ## Screenshots
 
-![Known order](docs/screenshots/known-order.png)
-![Unknown order](docs/screenshots/unknown-order.png)
+![Known 
+![Unknown order](
 
 ## Tech stack
 
