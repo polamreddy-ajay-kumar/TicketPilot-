@@ -93,5 +93,3 @@ Python · Google Gemini API (`google-genai`) · python-dotenv
 - The model returns a *function call*; my code runs it and sends back the result.
 - Always test both the happy path and the "Not Found" path.
 
----
-Built by **Polamreddy Ajay Kumar** — SkillMe AI Engineer Virtual Internship, Week 1.
