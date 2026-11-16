@@ -1,4 +1,4 @@
-# ✈️ TicketPilot — Your First Tool-Calling LLM
+# ✈️ TicketPilot — Tool-Calling LLM
 
 A small Python AI agent that **never guesses** an order status. When a customer asks
 *"What's the status of order A123?"*, the Gemini model decides to call a real Python
