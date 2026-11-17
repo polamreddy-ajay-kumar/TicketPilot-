@@ -1,0 +1,3 @@
+Escalation Policy
+
+Escalate a ticket to a supervisor when a customer reports a safety issue, alleges fraud, threatens legal action, or requests an exception to a written policy. Do not promise an exception or claim an investigation is complete before a supervisor confirms it. Acknowledge the concern, record the order number and relevant details, and tell the customer that the appropriate team will review the case. This document does not define a guaranteed resolution time.

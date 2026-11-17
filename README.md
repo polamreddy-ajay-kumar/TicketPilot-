@@ -1,83 +1,135 @@
-# TicketPilot: Support Ticket Triage Agent
+# TicketPilot — Week 3: RAG for Policy-Grounded Replies
 
-A small, offline support-ticket triage demo. It loads exactly 15 synthetic tickets in `tickets.json`, gathers relevant context with tools, and prints a suggested category, tool-call history, and draft reply for every ticket.
+TicketPilot's triage agent now has a company **policy knowledge base**. Refund, shipping,
+cancellation and escalation answers are grounded in retrieved policy text and cite the chunk they
+came from. If no document supports the answer, the agent says it **cannot confirm** instead of
+inventing a rule.
 
-## Sample output
+Retrieval is exposed as a normal tool, `search_policy_docs`, that runs inside the same
+tool-calling loop as the Week 2 triage tools.
 
-Output of `python main.py --quiet`: one row per ticket, then the Run Summary.
+## Output screenshots
 
-![TicketPilot console output](assets/output_preview.png)
+**1. Fresh run: embeddings are created (cache MISS); refund and shipping replies cite real chunks**
 
-## Toolset
+![Fresh run, cache MISS, refund and shipping tickets](screenshots/01_fresh_run_cache_miss.png)
 
-- `classify_ticket_category(text)` uses simple keyword rules to return `billing`, `shipping`, `bug`, or `other`. Software failures are checked before shipping keywords, so a crashing tracking page is treated as a bug rather than a delivery-status request.
-- `lookup_order(order_id)` returns synthetic order status and estimated delivery information; `ORD-1007` also has mock payment-review context for T-014.
-- `check_refund_eligibility(order_id)` returns a synthetic eligibility result and reason.
-- `escalate_to_human(reason)` records an in-process request for a support specialist to review an issue and returns a structured result: `{"recorded": true, "reason": ...}`. It does not contact a person or external service.
+**2. Second run: embeddings are reused (cache HIT); an uncovered policy gets "cannot confirm"**
 
-The tools and order data live in `tool.py`; the agent loop, system prompt and console output live in `main.py`. The order data is intentionally fictional. Estimated delivery dates are generated relative to the current date so the demo remains timely. An eligible result means a request can be reviewed; it does not mean a refund has been issued. The agent does not issue refunds or send replies. Drafts are suggestions, and uncertain cases should be reviewed by a person.
+![Cache HIT and cannot-confirm reply for price matching](screenshots/02_cache_hit_and_cannot_confirm.png)
 
-## Multi-round agent loop
+**3. Summary: retrieval was called before the reply on 7 of 8 tickets; 27 tests pass**
 
-`SYSTEM_PROMPT` describes the triage role, tool boundaries, and when order/refund context is required. `run_agent` repeatedly asks the model adapter for either tool calls or a final response. Each tool call is executed, logged with its arguments and result, and made available to the next turn. The loop is limited to five tool-call rounds; when the cap is reached, it logs a warning and returns a safe handoff draft. Identical tool calls (same tool and arguments) are executed only once; later repeats are logged and skipped. Escalation is additionally limited to one call per ticket, even if a repeated request changes its reason. The round cap still applies even when the model repeatedly requests a skipped call.
+![Summary table and unittest result](screenshots/03_summary_and_tests.png)
 
-## Prompt Fix Log
+These are rendered captures of the real output of `python main.py` and
+`python -m unittest discover -s tests` from this repo.
 
-- Ticket `T-003` exposed a classification issue: an app crash report that says no payment was made must be `bug`, not `billing`. The system prompt and classification rules were clarified so crashes, software errors, and login failures take priority over payment terms; the expected category is `bug`.
-- Ticket `T-007` exposed a classification-order issue: “tracking page keeps crashing” should be `bug`, not `shipping`. The classifier now checks software-failure terms before shipping keywords; the expected category is `bug`.
-- Classification rules now give app crashes, software errors, and login failures priority over billing keywords. This ensures a crash ticket mentioning payment, including “no payment was made,” is categorized as `bug`.
-- T-015 exposed an overly specific bug reply: it referred to an app crash even though the ticket reports a website error. Bug replies now acknowledge technical issues generally and request relevant reproduction/device/browser/version details without assuming the affected product.
-- Invoice requests now receive an invoice-specific draft rather than the generic billing response. Technical issue replies explicitly acknowledge that the app is crashing or not working as expected.
-- Refund replies explain eligibility without suggesting that a refund has already been completed.
-- Reviewed `T-013`: its deterministic test adapter deliberately repeats the classification request. The loop now suppresses duplicate executions while continuing to enforce the five-round cap and produce the safe handoff.
-- Ticket `T-012` exercises the required multi-tool path: order lookup followed by refund-eligibility lookup before drafting its reply.
-- T-014 is classified as billing, then `ORD-1007` is looked up. Because its mock order record says payment review is required, the agent calls `escalate_to_human(reason)`. The tool records the request in-process and returns `recorded: true`; the draft claims a request was recorded only when that result is present. No external person or service is contacted, and the ticket is not treated as a refund request.
-- T-015 uses the software-error rule and should be classified as `bug`.
-
-## 15-ticket test matrix (verified)
-
-The table below was verified by running `python main.py`: all 15 tickets produced the category and tool path shown.
-
-| Ticket | Expected category | Expected tools |
-| --- | --- | --- |
-| T-001 | shipping | `classify_ticket_category`, `lookup_order` |
-| T-002 | billing | `classify_ticket_category`, `lookup_order`, `check_refund_eligibility` |
-| T-003 | bug | `classify_ticket_category` |
-| T-004 | billing | `classify_ticket_category` |
-| T-005 | shipping | `classify_ticket_category`, `lookup_order` |
-| T-006 | billing | `classify_ticket_category`, `lookup_order`, `check_refund_eligibility` |
-| T-007 | bug | `classify_ticket_category` |
-| T-008 | billing | `classify_ticket_category` (invoice-specific draft) |
-| T-009 | shipping | `classify_ticket_category`, `lookup_order` |
-| T-010 | bug | `classify_ticket_category` |
-| T-011 | other | `classify_ticket_category` |
-| T-012 | billing | `classify_ticket_category`, `lookup_order`, `check_refund_eligibility` |
-| T-013 | bug | `classify_ticket_category` (repeated request; cap should be reached) |
-| T-014 | billing | `classify_ticket_category`, `lookup_order`, `escalate_to_human` |
-| T-015 | bug | `classify_ticket_category` |
-
-Refund eligibility is checked for T-002, T-006, and T-012. Eligible wording says support will review the request; it does not claim a refund was issued. T-014 produces one escalation record (`recorded: true`). T-013 hits the five-round cap and returns the safe handoff reply. Remaining tool errors: 0.
-
-This starter workspace has no model SDK, credentials, or network access, so `LocalTriageModel` is a deterministic offline stand-in. It follows the same tool-call/final-response protocol and makes the workflow reproducible. Replace its `respond` implementation with your model provider's tool-calling API adapter to use a real LLM; keep the `run_agent` loop and tool interface.
-
-## Safety-cap and reviewed classification case
-
-Ticket `T-013` is configured to request the classification tool on every turn; a run should show the five-round cap, skipped duplicate requests, and safe fallback. Ticket `T-007` describes a tracking page that crashes. The initial keyword ordering would have marked it as shipping; bug keywords now take priority so its expected category is `bug`.
-
-## Project layout
+## How it works
 
 ```
-main.py         agent loop, system prompt, offline model adapter, coloured console output
-tool.py         mock data + tools (classify, lookup, refund check, escalate)
-tickets.json    15 synthetic support tickets
-assets/         output_preview.png (screenshot used in this README)
+ticket ──> agent loop ──> model turn ──> tool_call(s) ──> tool result ──> ... ──> final reply
+                              │                │
+                              │                ├─ classify_ticket      (Week 2 style tool)
+                              │                ├─ lookup_order         (Week 2 style tool)
+                              │                └─ search_policy_docs   (NEW: RAG as a tool)
+                              └─ SYSTEM_PROMPT: must search before any policy reply
 ```
 
-## How to run
+1. **Knowledge base**: `policy_docs/` holds 4 short `.txt` policies (refund, shipping,
+   cancellation, escalation) with concrete rules.
+2. **Chunking and embedding**: `chunk_text()` splits each document into overlapping chunks
+   (300 words, 40 overlap). Each chunk is embedded once. Vectors are cached in
+   `embedding_cache.json`, keyed by the SHA-256 hash of the chunk text.
+3. **Retrieval tool**: `search_policy_docs(query, top_k=3)` ranks chunks by cosine similarity
+   combined with keyword overlap. Chunks below `MIN_RELEVANCE` (0.18) are dropped, so an
+   uncovered topic returns nothing.
+4. **Tool-calling loop**: `run_agent()` keeps a chat-style message list
+   (user, assistant `tool_calls`, tool results). It dispatches each call through `TOOL_REGISTRY`
+   and repeats until the model returns a final reply (max 5 steps).
+5. **System prompt**: `SYSTEM_PROMPT` tells the agent to call `search_policy_docs` before drafting
+   any reply that mentions a refund, deadline or policy rule, to use only retrieved text, to cite the
+   chunk id, and to say it cannot confirm when nothing supports the answer. Retrieval is not forced
+   for non-policy tickets (T-108 skips it).
+6. **Traceable output**: every reply is printed with `Policy rule` and `Policy chunks used`, so each
+   policy claim maps to a chunk id such as `refund_policy.txt#chunk-1`.
+
+### About the "model"
+
+No API key or network is needed. The loop is driven by `LocalPolicyModel`, a deterministic stand-in
+that speaks the same protocol as a hosted LLM (`{"content", "tool_calls"}`), follows the system-prompt
+rule, and drafts only from retrieved chunks. To use a real LLM, write a callable that sends
+`messages`, `TOOL_SCHEMAS` and `SYSTEM_PROMPT` to your provider and returns that same dictionary;
+`run_agent(..., model=your_model)` needs no other change.
+`classify_ticket` and `lookup_order` are simple placeholders for the Week 2 tools; swap in your own.
+
+## Run it
 
 ```bash
-python main.py            # tool-call log per ticket, then the table and Run Summary
-python main.py --quiet    # table and Run Summary only
+python main.py                  # all 8 sample tickets + summary table
+python main.py --topk-test      # stretch goal: top_k=1 vs top_k=3 on 3 tickets
+python -m unittest discover -s tests
 ```
 
-Output is a coloured table (#, Ticket ID, Category, Tools Used, Draft Reply preview) followed by a Run Summary: tickets processed, category counts, multi-tool tickets, safety-cap hits, escalations and tool errors. No packages need installing (Python 3.8+).
+Python 3.6+, standard library only (`requirements.txt` lists no packages).
+
+## Sample tickets and what they prove
+
+| Ticket | Scenario | Result |
+|---|---|---|
+| T-101 | Refund deadline | Cites `refund_policy.txt#chunk-1` (30 calendar days) |
+| T-102 | Delivery time | Cites `shipping_policy.txt#chunk-1` (3 to 5 business days) |
+| T-103 | **Price matching (not in any doc)** | **Cannot confirm**, recommends contacting support, `Source: None` |
+| T-104 | Cancel while processing | Cites `cancellation_policy.txt#chunk-1` |
+| T-105 | Package late after 7 business days | Cites `shipping_policy.txt#chunk-1` |
+| T-106 | Defective item, shipping-charge refund (`ORD-1042`) | `lookup_order` + `search_policy_docs`, cites `refund_policy.txt#chunk-1` |
+| T-107 | Safety issue | Cites `escalation_policy.txt#chunk-1` |
+| T-108 | "Thanks, sounds great!" | No policy question, so no retrieval |
+
+## Checklist (Week 3 "Done When")
+
+- [x] Refund ticket produces a reply citing a real rule from `refund_policy.txt` (T-101, T-106).
+- [x] Uncovered policy gets an honest "cannot confirm" instead of an invented rule (T-103).
+- [x] Re-running does not re-embed the documents: 1st run `0 HIT, 4 MISS`, 2nd run `4 HIT, 0 MISS`
+      (also asserted by an automated test).
+- [x] At least 3 tickets show retrieval before the reply (7 do; see the Summary screenshot).
+- [x] Stretch: `--topk-test` compares `top_k=1` and `top_k=3` on T-102, T-105 and T-106. With this
+      small knowledge base, `top_k=1` already returns the right chunk and the replies are identical.
+      `top_k=3` mainly adds loosely related chunks, such as a refund chunk for a shipping question.
+
+## Project structure
+
+```text
+.
+├── main.py                    # chunking, embeddings + cache, tools, system prompt, agent loop
+├── README.md
+├── requirements.txt
+├── .gitignore                 # ignores the generated embedding_cache.json
+├── screenshots/               # the 3 output screenshots used above
+├── policy_docs/               # refund, shipping, cancellation, escalation policies
+└── tests/test_policy_agent.py # 27 unittest cases
+```
+
+## Tests
+
+27 tests, all passing (Python 3.13). They cover:
+
+- each policy rule;
+- query and `top_k` validation;
+- cache MISS then HIT, plus a two-process re-run check;
+- missing or corrupted cache;
+- a missing policy folder;
+- the unsupported price-matching query;
+- citations;
+- tool dispatch;
+- retrieval before reply;
+- no forced retrieval for non-policy tickets;
+- the Week 2 tools running alongside retrieval.
+
+## Limitations
+
+- Embeddings are hashed bag-of-words vectors, which are lexical rather than semantic. Paraphrases
+  with no shared terms may not be retrieved. Swap `embed_text` for a real embedding model to
+  improve this; the cache and search code stay the same.
+- The `0.18` relevance threshold and the alias list are heuristics tuned to these four documents.
+- The model is a deterministic stand-in. See "About the model" above to plug in a real LLM.

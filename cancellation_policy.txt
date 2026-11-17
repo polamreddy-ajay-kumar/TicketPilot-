@@ -1,0 +1,3 @@
+Order Cancellation Policy
+
+A customer may request cancellation while an order is still being processed and has not entered fulfillment. Once an order has entered fulfillment or has been dispatched, it cannot be cancelled; the customer may instead follow the Refund and Returns Policy after delivery if the item is eligible. Cancellation requests must include the order number. This policy covers physical orders only and does not define rules for subscriptions or recurring services.
