@@ -13,6 +13,8 @@ CACHE_FILE = os.path.join(BASE_DIR, "embedding_cache.json")
 VECTOR_SIZE = 512
 MIN_RELEVANCE = 0.18
 MAX_TOP_K = 20
+MAX_LEXICAL_TERMS = 6
+MIN_FALLBACK_OVERLAP = 2
 MATCH_GENERIC_WORDS = set(("item order day business policy customer product company" ).split())
 
 STOP_WORDS = set((
@@ -33,7 +35,13 @@ WORD_ALIASES = {
     "updated": "update", "arrived": "arrive", "arrives": "arrive",
     "delayed": "delay", "delaying": "delay",
     "fulfillment": "fulfill", "fulfilled": "fulfill", "eligible": "eligibility",
-    "matching": "match", "cheaper": "cheap", "alleges": "allege",
+    "matching": "match", "cheaper": "cheap", "alleges": "allege", "alleging": "allege",
+    "alleged": "allege",
+    # synonyms of words the escalation policy uses ("safety issue", "legal action")
+    "fire": "safety", "overheated": "safety", "overheating": "safety", "sparked": "safety",
+    "dangerous": "safety", "sue": "legal", "sued": "legal", "lawsuit": "legal",
+    "lawyer": "legal", "attorney": "legal",
+    "damaged": "defective", "broken": "defective", "faulty": "defective",
     "threatens": "threaten", "requests": "request", "requested": "request",
 }
 
@@ -231,7 +239,8 @@ def search_policy_docs(query, top_k=3):
         if not overlap:
             continue
         cosine = max(0.0, cosine_similarity(query_vector, policy_chunk["embedding"]))
-        lexical = len(overlap) / float(len(match_terms) or 1)
+        # Cap the denominator so a long, chatty ticket doesn't dilute a clear keyword match.
+        lexical = len(overlap) / float(min(len(match_terms), MAX_LEXICAL_TERMS) or 1)
         score = 0.65 * cosine + 0.35 * lexical
         if score >= MIN_RELEVANCE:
             ranked.append({
@@ -249,22 +258,57 @@ ORDER_DB = {
     "ORD-2087": {"status": "in transit", "item": "Desk Lamp", "final_sale": False},
 }
 HIGH_PRIORITY_TERMS = set(("safety", "safe", "fraud", "legal", "lawsuit", "overheated", "fire"))
+# Escalation triggers copied from escalation_policy.txt: safety, fraud, legal action, exception.
+ESCALATION_TERMS = set(("safety", "safe", "fraud", "legal", "lawsuit", "overheated", "fire",
+                        "exception", "supervisor"))
 CATEGORY_TERMS = [
-    ("escalation", set(("safety", "safe", "fraud", "legal", "lawsuit", "overheated", "fire"))),
+    ("escalation", ESCALATION_TERMS),
     ("cancellation", set(("cancel",))),
     ("refund", set(("refund", "return", "defective"))),
     ("shipping", set(("ship", "delivery", "dispatch", "tracking", "arrive", "package", "delay"))),
 ]
 
 
+SMALL_TALK_TERMS = set(("thank", "thanks", "great", "love", "appreciate", "awesome", "perfect"))
+# Words that state what the customer WANTS (intent) count double; words that only describe
+# the situation (dispatch, package, ...) count once. "cancel ... dispatched" is a cancellation.
+INTENT_TERMS = set(("cancel", "refund", "return", "defective", "safety", "safe", "fraud",
+                    "legal", "lawsuit", "overheated", "fire", "exception"))
+NON_DELIVERY = re.compile(r"\b(never|not|n't|didn't|hasn't|haven't)\b\W+(?:\w+\W+){0,2}?arriv", re.I)
+
+
 def classify_ticket(ticket):
-    """Week 2 style triage tool: category + priority (keyword based, no policy claims)."""
+    """Week 2 style triage tool: category, priority and a confidence score.
+
+    Confidence is the winning category's weighted share of all keyword hits, scaled by how
+    many distinct keywords matched. Ties between categories (two competing intents) and
+    tickets with no keyword at all (that are not small talk) get LOW confidence.
+    "never/not arrived" counts as a shipping signal so a missing package is not mistaken
+    for an ordinary refund request.
+    """
     if not isinstance(ticket, str) or not ticket.strip():
         raise ValueError("ticket must be a non-empty string")
     words = set(tokens(ticket))
-    category = next((name for name, terms in CATEGORY_TERMS if words & terms), "general")
+    hits = [(name, words & terms) for name, terms in CATEGORY_TERMS]
+    weights = [sum(2 if word in INTENT_TERMS else 1 for word in matched) for _, matched in hits]
+    distinct = [len(matched) for _, matched in hits]
+    matched_extra = {}
+    if NON_DELIVERY.search(ticket):
+        shipping = [name for name, _ in hits].index("shipping")
+        weights[shipping] += 2
+        distinct[shipping] += 1
+        matched_extra[shipping] = ["non_delivery"]
+    top = max(weights)
     priority = "high" if words & HIGH_PRIORITY_TERMS else "normal"
-    return {"category": category, "priority": priority}
+    if top == 0:
+        confidence = 0.8 if words & SMALL_TALK_TERMS else 0.4
+        return {"category": "general", "priority": priority,
+                "confidence": confidence, "matched_terms": []}
+    best = weights.index(top)
+    share = top / float(sum(weights))
+    confidence = round(share * min(1.0, 0.6 + 0.2 * distinct[best]), 2)
+    return {"category": hits[best][0], "priority": priority, "confidence": confidence,
+            "matched_terms": sorted(hits[best][1]) + matched_extra.get(best, [])}
 
 
 def lookup_order(order_id):
@@ -294,7 +338,9 @@ TOOL_SCHEMAS = [
     {"name": "search_policy_docs",
      "description": "Search the company policy knowledge base (refund, shipping, "
                     "cancellation, escalation). Returns the top_k most relevant chunks "
-                    "with chunk ids that must be cited.",
+                    "with chunk ids that must be cited. Put the policy's stage words "
+                    "(processing, fulfillment, dispatch) in the query, not only the "
+                    "customer's wording.",
      "parameters": {"type": "object",
                     "properties": {"query": {"type": "string"},
                                    "top_k": {"type": "integer", "minimum": 1, "maximum": 20}},
@@ -313,6 +359,12 @@ Rules:
 3. Cite the chunk id (for example refund_policy.txt#chunk-1) for every policy claim.
 4. If no retrieved chunk supports the answer, say you cannot confirm the policy
    and recommend contacting support. Never invent a rule.
+5. Customers describe the order stage in their own words ("still in the warehouse",
+   "hasn't left", "packed", "shipped"). Map that to the policy's stages (processing,
+   fulfillment, dispatch) and search with the policy's words as well as theirs.
+6. Never turn "not dispatched yet" into "you can cancel". Cancellation depends on whether
+   the order has entered fulfillment. If the retrieved chunk says it depends on the order
+   status, say exactly that and send the customer to support with the order number.
 """
 
 
@@ -350,7 +402,8 @@ POLICY_TERMS = set((
 def needs_policy_lookup(ticket):
     if not isinstance(ticket, str) or not ticket.strip():
         return False
-    return bool(set(tokens(ticket)).intersection(POLICY_TERMS))
+    category_words = set().union(*[terms for _, terms in CATEGORY_TERMS])
+    return bool(set(tokens(ticket)).intersection(POLICY_TERMS | category_words))
 
 
 def _sentences(policy_text):
@@ -387,6 +440,10 @@ def select_policy_rule(ticket, policy_text):
         (("fraud",), "Escalate a ticket"),
         (("legal",), "Escalate a ticket"),
         (("exception",), "Escalate a ticket"),
+        (("cancel", "warehouse"), "can be cancelled only if it has not entered fulfillment"),
+        (("cancel", "packed"), "can be cancelled only if it has not entered fulfillment"),
+        (("return", "day"), "30 calendar days"),
+        (("arrive",), "7 business days after dispatch"),
     ]
     for required_terms, phrase in rules:
         if set(required_terms).issubset(query_words):
@@ -398,15 +455,24 @@ def select_policy_rule(ticket, policy_text):
                     return "{} {}".format(matched[0], support) if support else matched[0]
                 return matched[0]
 
-    candidates = [(len(query_words.intersection(tokens(sentence))), sentence)
-                  for sentence in sentences]
+    # Fallback: need >= MIN_FALLBACK_OVERLAP shared specific words. A lone topic word such as
+    # "shipping" must not make an unrelated sentence look like an answer (ungrounded guess).
+    specific = query_words.difference(MATCH_GENERIC_WORDS)
+    candidates = [(len(specific.intersection(tokens(sentence))), sentence) for sentence in sentences]
     best = max(candidates, key=lambda candidate: candidate[0])
-    return best[1] if best[0] > 0 else ""
+    return best[1] if best[0] >= MIN_FALLBACK_OVERLAP else ""
 
 
-def relevant_policy_chunk(ticket, retrieved_chunks):
+CATEGORY_POLICY = {"refund": "refund_policy.txt", "shipping": "shipping_policy.txt",
+                   "cancellation": "cancellation_policy.txt", "escalation": "escalation_policy.txt"}
+
+
+def relevant_policy_chunk(ticket, retrieved_chunks, preferred_source=None):
+    """Pick the chunk that answers the ticket; prefer the policy file matching its category."""
     if not retrieved_chunks:
         return None
+    if preferred_source:
+        retrieved_chunks = [c for c in retrieved_chunks if c["source"] == preferred_source] or retrieved_chunks
     query_terms = set(tokens(ticket))
     preferred_rules = []
     if "refund" in query_terms and "deadline" in query_terms:
@@ -433,11 +499,11 @@ def relevant_policy_chunk(ticket, retrieved_chunks):
         query_terms.intersection(tokens(chunk["text"]))))
 
 
-def draft_reply(ticket, retrieved_chunks):
+def draft_reply(ticket, retrieved_chunks, preferred_source=None):
     if not retrieved_chunks:
         return ("I couldn't confirm that policy from the company documents available to me. "
                 "Please contact support for confirmation. Source: None.")
-    chunk = relevant_policy_chunk(ticket, retrieved_chunks)
+    chunk = relevant_policy_chunk(ticket, retrieved_chunks, preferred_source)
     rule = select_policy_rule(ticket, chunk["text"])
     if not rule:
         return ("I couldn't confirm that policy from the company documents available to me. "
@@ -447,6 +513,26 @@ def draft_reply(ticket, retrieved_chunks):
 # --------------------------------------------------------------------------
 # Tool-calling agent loop (RAG is "just another tool" the model chooses to call)
 # --------------------------------------------------------------------------
+STAGE_WORDS = {"warehouse": "fulfillment", "packed": "fulfillment", "packing": "fulfillment",
+               "picked": "fulfillment", "shipped": "dispatch", "left": "dispatch"}
+
+
+def stage_terms(ticket):
+    """Policy stage words implied by the customer's wording (prompt rule 5)."""
+    words = set(re.findall(r"[a-z]+", ticket.lower()))
+    return sorted(set(STAGE_WORDS[w] for w in words if w in STAGE_WORDS))
+
+
+DISPATCHED_STATUSES = ("in transit", "shipped", "out for delivery", "delivered")
+
+
+def ticket_with_context(ticket, order):
+    """Fold lookup_order facts into the ticket text so retrieval and rule selection see them."""
+    if isinstance(order, dict) and order.get("status") in DISPATCHED_STATUSES:
+        return ticket + " (order already dispatched)"
+    return ticket
+
+
 ORDER_ID_PATTERN = re.compile(r"\bORD-\d+\b", re.IGNORECASE)
 MAX_STEPS = 5
 CANNOT_CONFIRM = ("I couldn't confirm that policy from the company documents available "
@@ -473,13 +559,21 @@ class LocalPolicyModel(object):
         if order and "lookup_order" not in done:
             calls.append(("lookup_order", {"order_id": order.group(0)}))
         if needs_policy_lookup(ticket) and "search_policy_docs" not in done:
-            calls.append(("search_policy_docs", {"query": ticket, "top_k": 3}))
+            # Query expansion: add the classifier's category word so the right policy file ranks.
+            category = done.get("classify_ticket", {}).get("category")
+            context = ticket_with_context(ticket, done.get("lookup_order"))
+            query = "{} {}".format(context, category) if category in CATEGORY_POLICY else context
+            if category == "cancellation":
+                query = " ".join([query] + stage_terms(ticket))
+            calls.append(("search_policy_docs", {"query": query, "top_k": 3}))
         if calls:
             name, args = calls[0]  # one tool call per step, like a typical model turn
             return {"content": None, "tool_calls": [
                 {"id": "call_{}".format(len(messages)), "name": name, "arguments": args}]}
         if "search_policy_docs" in done:
-            reply = draft_reply(ticket, done["search_policy_docs"])
+            source = CATEGORY_POLICY.get(done.get("classify_ticket", {}).get("category"))
+            reply = draft_reply(ticket_with_context(ticket, done.get("lookup_order")),
+                                done["search_policy_docs"], source)
         else:
             reply = "Thanks for reaching out! No policy question was detected, so a support agent will follow up."
         if "lookup_order" in done and done["lookup_order"].get("status") != "not found":
@@ -518,8 +612,12 @@ def run_agent(ticket_id, ticket, model=None, verbose=True):
                 _print_tool_step(step, call, result)
     if reply is None:
         reply = CANNOT_CONFIRM
-    chunk = relevant_policy_chunk(ticket, retrieved)
-    rule = select_policy_rule(ticket, chunk["text"]) if chunk else ""
+    category = next((r.get("category") for _, name, _, r in trace
+                     if name == "classify_ticket" and isinstance(r, dict)), None)
+    order = next((r for _, name, _, r in trace if name == "lookup_order"), None)
+    context = ticket_with_context(ticket, order)
+    chunk = relevant_policy_chunk(context, retrieved, CATEGORY_POLICY.get(category))
+    rule = select_policy_rule(context, chunk["text"]) if chunk else ""
     chunks_used = [chunk["chunk_id"]] if chunk and rule else []
     outcome = {
         "ticket_id": ticket_id, "reply": reply, "policy_rule": rule or None,

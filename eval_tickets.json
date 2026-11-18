@@ -1,0 +1,386 @@
+[
+ {
+  "id": "E01",
+  "subject": "Refund deadline",
+  "body": "I received my order last week and want a refund. What is the refund deadline?",
+  "expected_category": "refund",
+  "expected_outcome": "answered",
+  "expected_policy": "refund_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev",
+  "expected_phrase": "30 calendar days"
+ },
+ {
+  "id": "E02",
+  "subject": "Refund timing",
+  "body": "I returned my item. How long does refund processing take once you receive it?",
+  "expected_category": "refund",
+  "expected_outcome": "answered",
+  "expected_policy": "refund_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev",
+  "expected_phrase": "5 to 10 business days"
+ },
+ {
+  "id": "E03",
+  "subject": "Final sale item",
+  "body": "Can I get a refund for a final-sale item I bought?",
+  "expected_category": "refund",
+  "expected_outcome": "answered",
+  "expected_policy": "refund_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev",
+  "expected_phrase": "Final-sale items are not eligible"
+ },
+ {
+  "id": "E04",
+  "subject": "Defective order",
+  "body": "Order ORD-1042 arrived defective. Will you refund the original shipping charges?",
+  "expected_category": "refund",
+  "expected_outcome": "answered",
+  "expected_policy": "refund_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "lookup_order",
+   "search_policy_docs"
+  ],
+  "split": "dev",
+  "expected_phrase": "unless the item arrived defective"
+ },
+ {
+  "id": "E05",
+  "subject": "Delivery time",
+  "body": "My package was dispatched four business days ago. What is the shipping delivery timeframe?",
+  "expected_category": "shipping",
+  "expected_outcome": "answered",
+  "expected_policy": "shipping_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev",
+  "expected_phrase": "3 to 5 business days"
+ },
+ {
+  "id": "E06",
+  "subject": "Package not here",
+  "body": "My package has not arrived after seven business days; should I contact support?",
+  "expected_category": "shipping",
+  "expected_outcome": "answered",
+  "expected_policy": "shipping_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev",
+  "expected_phrase": "7 business days after dispatch"
+ },
+ {
+  "id": "E07",
+  "subject": "When does it ship",
+  "body": "How many days of processing before my order is dispatched?",
+  "expected_category": "shipping",
+  "expected_outcome": "answered",
+  "expected_policy": "shipping_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev",
+  "expected_phrase": "1 to 2 business days"
+ },
+ {
+  "id": "E08",
+  "subject": "Cancel my order",
+  "body": "Can I cancel my order while it is still processing?",
+  "expected_category": "cancellation",
+  "expected_outcome": "answered",
+  "expected_policy": "cancellation_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev",
+  "expected_phrase": "still being processed"
+ },
+ {
+  "id": "E09",
+  "subject": "Cancel after dispatch",
+  "body": "My order was already dispatched. Can I still cancel it?",
+  "expected_category": "cancellation",
+  "expected_outcome": "answered",
+  "expected_policy": "cancellation_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev",
+  "expected_phrase": "entered fulfillment"
+ },
+ {
+  "id": "E10",
+  "subject": "Charger sparked",
+  "body": "The charger I received overheated and sparked. This is a safety issue.",
+  "expected_category": "escalation",
+  "expected_outcome": "escalate_to_human",
+  "expected_policy": "escalation_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev"
+ },
+ {
+  "id": "E11",
+  "subject": "Unauthorized charge",
+  "body": "I think someone used my card on your site. I'm alleging fraud and may take legal action.",
+  "expected_category": "escalation",
+  "expected_outcome": "escalate_to_human",
+  "expected_policy": "escalation_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev"
+ },
+ {
+  "id": "E12",
+  "subject": "Price match",
+  "body": "Do you offer price matching if I find the same item cheaper elsewhere?",
+  "expected_category": "general",
+  "expected_outcome": "escalate_to_human",
+  "expected_policy": null,
+  "expected_tools": [
+   "classify_ticket"
+  ],
+  "split": "dev"
+ },
+ {
+  "id": "E13",
+  "subject": "Warranty",
+  "body": "How long is the warranty on the earbuds I bought?",
+  "expected_category": "general",
+  "expected_outcome": "escalate_to_human",
+  "expected_policy": null,
+  "expected_tools": [
+   "classify_ticket"
+  ],
+  "split": "dev"
+ },
+ {
+  "id": "E14",
+  "subject": "Thank you",
+  "body": "Thanks so much, the earbuds sound great!",
+  "expected_category": "general",
+  "expected_outcome": "answered",
+  "expected_policy": null,
+  "expected_tools": [
+   "classify_ticket"
+  ],
+  "expect_no_retrieval": true,
+  "split": "dev"
+ },
+ {
+  "id": "E15",
+  "subject": "Cancel and refund",
+  "body": "I want to cancel my order and get my money back as a refund.",
+  "expected_category": "cancellation",
+  "expected_outcome": "escalate_to_human",
+  "expected_policy": null,
+  "expected_tools": [
+   "classify_ticket"
+  ],
+  "note": "Two competing intents (cancel + refund): a human should decide, not the agent.",
+  "split": "dev"
+ },
+ {
+  "id": "E16",
+  "subject": "Never arrived",
+  "body": "My order never arrived and I want a refund.",
+  "expected_category": "shipping",
+  "expected_outcome": "answered",
+  "expected_policy": "shipping_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "dev",
+  "expected_phrase": "7 business days after dispatch"
+ },
+ {
+  "id": "E17",
+  "subject": "Account question",
+  "body": "Hi, I have a question about my account.",
+  "expected_category": "general",
+  "expected_outcome": "escalate_to_human",
+  "expected_policy": null,
+  "expected_tools": [
+   "classify_ticket"
+  ],
+  "split": "dev"
+ },
+ {
+  "id": "H01",
+  "subject": "Return a jacket",
+  "body": "I'd like to return a jacket I bought 10 days ago. Is that still possible?",
+  "expected_category": "refund",
+  "expected_outcome": "answered",
+  "expected_policy": "refund_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "held_out_round1",
+  "expected_phrase": "30 calendar days"
+ },
+ {
+  "id": "H02",
+  "subject": "Tracking stuck",
+  "body": "Where is my parcel? The tracking hasn't updated in days.",
+  "expected_category": "shipping",
+  "expected_outcome": "answered",
+  "expected_policy": "shipping_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "held_out_round1",
+  "expected_phrase": "7 business days after dispatch"
+ },
+ {
+  "id": "H03",
+  "subject": "Wrong colour",
+  "body": "Please cancel order ORD-2087, I ordered the wrong colour.",
+  "expected_category": "cancellation",
+  "expected_outcome": "answered",
+  "expected_policy": "cancellation_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "lookup_order",
+   "search_policy_docs"
+  ],
+  "split": "held_out_round1",
+  "expected_phrase": "entered fulfillment or has been dispatched, it cannot be cancelled"
+ },
+ {
+  "id": "H04",
+  "subject": "Caught fire",
+  "body": "I'm going to sue you if this isn't fixed. The product caught fire.",
+  "expected_category": "escalation",
+  "expected_outcome": "escalate_to_human",
+  "expected_policy": "escalation_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "held_out_round1",
+  "note": "Failed on first held-out run (no policy lookup + no synonym link fire->safety); fixed with aliases."
+ },
+ {
+  "id": "H05",
+  "subject": "Ship to Canada",
+  "body": "Can you ship to Canada and how much does international shipping cost?",
+  "expected_category": "shipping",
+  "expected_outcome": "escalate_to_human",
+  "expected_policy": null,
+  "expected_tools": [
+   "classify_ticket"
+  ],
+  "split": "held_out_round1"
+ },
+ {
+  "id": "H06",
+  "subject": "Refund to bank",
+  "body": "How long will my refund take to reach my bank after the return is approved?",
+  "expected_category": "refund",
+  "expected_outcome": "answered",
+  "expected_policy": "refund_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "held_out_round2",
+  "expected_phrase": "5 to 10 business days"
+ },
+ {
+  "id": "H07",
+  "subject": "Sunday delivery",
+  "body": "Do you deliver on Sundays?",
+  "expected_category": "shipping",
+  "expected_outcome": "escalate_to_human",
+  "expected_policy": null,
+  "expected_tools": [
+   "classify_ticket"
+  ],
+  "split": "held_out_round2",
+  "note": "Label corrected after first run: a delivery-days question IS a shipping ticket, just not covered by the docs."
+ },
+ {
+  "id": "H08",
+  "subject": "Cancel at warehouse",
+  "body": "Is it possible to cancel my order right now? It hasn't left the warehouse.",
+  "expected_category": "cancellation",
+  "expected_outcome": "answered",
+  "expected_policy": "cancellation_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "held_out_round2",
+  "expected_phrase": "has not entered fulfillment",
+  "note": "Fixed: cancellation_policy.txt now states the conditional rule for orders still in the warehouse; agent prompt rules 5-6 added. Label corrected: the original expectation ('still being processed') implied warehouse = cancellable, which the policy does NOT say; the right answer is conditional (only if not yet in fulfillment)."
+ },
+ {
+  "id": "H09",
+  "subject": "Promised exception",
+  "body": "I want a supervisor. Your agent promised me an exception to the refund policy.",
+  "expected_category": "escalation",
+  "expected_outcome": "escalate_to_human",
+  "expected_policy": "escalation_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "held_out_round2",
+  "note": "First run: classifier lacked 'exception'/'supervisor' although escalation_policy.txt lists exceptions; fixed."
+ },
+ {
+  "id": "H10",
+  "subject": "Damaged item",
+  "body": "My item is damaged. Can I get my shipping fee back?",
+  "expected_category": "refund",
+  "expected_outcome": "answered",
+  "expected_policy": "refund_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "held_out_round2",
+  "expected_phrase": "unless the item arrived defective",
+  "note": "First run: 'damaged' did not match policy word 'defective'; synonym alias added."
+ },
+ {
+  "id": "H11",
+  "subject": "Still at warehouse",
+  "body": "It is still sitting in the warehouse. Can I cancel my order?",
+  "expected_category": "cancellation",
+  "expected_outcome": "answered",
+  "expected_policy": "cancellation_policy.txt",
+  "expected_tools": [
+   "classify_ticket",
+   "search_policy_docs"
+  ],
+  "split": "held_out_round3",
+  "expected_phrase": "has not entered fulfillment",
+  "note": "Written after the H08 fix to check it generalises to other wording."
+ }
+]

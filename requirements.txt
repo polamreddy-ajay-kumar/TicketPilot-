@@ -1,1 +1,2 @@
-# No third-party packages are required; the project uses the Python standard library.
+# API layer (Week 4). The agent itself (main.py, triage.py, evaluate.py) uses only the standard library.
+flask>=3.0
